@@ -23,7 +23,6 @@ from telegram.ext import CommandHandler, Updater
 load_dotenv()
 config = configparser.ConfigParser()
 config.read('setup.cfg', encoding='utf-8')
-locale.setlocale(locale.LC_TIME, 'ru')
 
 
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
@@ -76,7 +75,7 @@ def send_message_admin(message):
     logger.info(f'Админу отправлено сообщение - "{message}".')
 
 
-def send_message(bot, message, telegram_ids):
+def send_message(message, telegram_ids):
     """Отправляет сообщение в Telegram-чаты участников процесса."""
     logger.info('***Работает send_message.')
     bot = get_bot()
@@ -85,7 +84,7 @@ def send_message(bot, message, telegram_ids):
     logger.info(f'Получателям отправлено сообщение - "{message}".')
 
 
-def check_status_resource(bot, endpoint, telegram_ids):
+def check_status_resource(endpoint, telegram_ids):
     """Делает запрос к эндпоинту.
 
     В качестве параметра функция получает временную метку и ендпоинт. Делает
@@ -93,6 +92,7 @@ def check_status_resource(bot, endpoint, telegram_ids):
     списка.
     """
     logger.info('***Работает check_status_resource.')
+    bot = get_bot()
     response = requests.get(endpoint)
     logger.info(f'response - "{response}". type(response) - {type(response)}.')
     status_code = response.status_code
@@ -101,8 +101,7 @@ def check_status_resource(bot, endpoint, telegram_ids):
             f'Ошибка запроса к сайту "{endpoint}". Код статуса - '
             + f'{status_code}.')
         logger.error(message_status_code_not_200)
-        send_message(
-            bot, message_status_code_not_200, telegram_ids)
+        send_message(message_status_code_not_200, telegram_ids)
     else:
         logger.info(f'Сайтттт - "{endpoint}". Код статуса - {status_code}.')
     return status_code
@@ -219,8 +218,7 @@ def main():
             UNSUCCESSFUL_RESULT = ''
             for endp in ENDPOINTS:
                 logger.info(f'Проверяем статус сайта "{endp}".')
-                check = check_status_resource(
-                    bot, endp, telegram_ids)
+                check = check_status_resource(endp, telegram_ids)
                 logger.info(f'check - {check}. type(check) - {type(check)}.')
                 if check == 200:
                     SUCCESSFUL_RESULT += (f'{check} - {endp}\n')
@@ -243,20 +241,20 @@ def main():
                 + f'с сайтом. -\n"{endp}".'
             )
             logger.error(message)
-            send_message(bot, message, telegram_ids)
-            send_message_admin(bot, message)
+            send_message(message, telegram_ids)
+            send_message_admin(message)
             logger.exception(message, exc_info=True)
             raise MyCustomError(message)
         except TypeError as typerror:
             message = (f'TypeError при запуске функции main: {typerror}')
             logger.error(message)
-            send_message_admin(bot, message)
+            send_message_admin(message)
             logger.exception(message, exc_info=True)
             raise MyCustomError(message)
         except Exception as error:
             message = (f'Exception при запуске функции main: {error}.')
             logger.error(message)
-            send_message_admin(bot, message)
+            send_message_admin(message)
             logger.exception(message, exc_info=True)
             raise MyCustomError(message)
         finally:
