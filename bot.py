@@ -55,7 +55,6 @@ def get_bot():
 
 def get_subscribers_ids():
     """Достаёт из файла setup.cfg перечень id учётных запписей телеграм."""
-    logger.info('***Работает get_subscribers_ids.')
     telegram_subscriber_ids = []
     tg_ids = config['tg_setting']['subscription_tg_ids'].split(',')
     for tg_id in tg_ids:
@@ -69,19 +68,17 @@ def get_subscribers_ids():
 
 def send_message_admin(message):
     """Отправляет сообщение в Telegram чат админа."""
-    logger.info('***Работает send_message_admin.')
     bot = get_bot()
     bot.send_message(chat_id=TELEGRAM_ADMIN_ID, text=message,)
-    logger.info(f'Админу отправлено сообщение - "{message}".')
+    logger.debug(f'Админу отправлено сообщение - "{message}".')
 
 
 def send_message(message, telegram_ids):
     """Отправляет сообщение в Telegram-чаты участников процесса."""
-    logger.info('***Работает send_message.')
     bot = get_bot()
     for t in telegram_ids:
         bot.send_message(chat_id=t, text=message,)
-    logger.info(f'Получателям отправлено сообщение - "{message}".')
+    logger.debug(f'Получателям отправлено сообщение - "{message}".')
 
 
 def check_status_resource(endpoint, telegram_ids):
@@ -91,20 +88,23 @@ def check_status_resource(endpoint, telegram_ids):
     запрос и, если статус ответа не 200, то посылает сообщение пользоватлю из
     списка.
     """
-    logger.info('***Работает check_status_resource.')
     bot = get_bot()
-    response = requests.get(endpoint)
-    logger.info(f'response - "{response}". type(response) - {type(response)}.')
-    status_code = response.status_code
-    if response.status_code != HTTPStatus.OK:
-        message_status_code_not_200 = (
-            f'Ошибка запроса к сайту "{endpoint}". Код статуса - '
-            + f'{status_code}.')
-        logger.error(message_status_code_not_200)
+    try:
+        response = requests.get(endpoint)
+        logger.info(f'response - "{response}". type(response) - {type(response)}.')
+        
+        result = response.status_code
+    except requests.exceptions.ConnectionError as conerror:
+        logger.warning(conerror)
+        result = f'Connection error: \n{conerror}\n'
+
+    if result != HTTPStatus.OK:
+        message_status_code_not_200 = (f'Сайт: "{endpoint}". Ошибка: {result}.')
+        logger.warning(message_status_code_not_200)
         send_message(message_status_code_not_200, telegram_ids)
     else:
-        logger.info(f'Сайтттт - "{endpoint}". Код статуса - {status_code}.')
-    return status_code
+        logger.info(f'Сайт: "{endpoint}". Ответ: {result}.')
+    return result
 
 
 def check_tokens():
@@ -186,7 +186,6 @@ def subscribe(update, context):
 def main():
     """Основная логика работы бота."""
     global ENDPOINTS, CHECK_RESULT
-    logger.info('***Работает main.')
     endpoints = config.get('tg_setting', 'endpoints')
     endpoints = re.split('\\n|,', endpoints)
     for endpoint in endpoints:
@@ -202,61 +201,37 @@ def main():
     logger.info('Проверка токенов завершилась успешно.')
     while True:
         try:
+            logger.info('Старт очередной проверки...')
             updater = Updater(token=TELEGRAM_TOKEN)
             date_time = DT_MOSCOW.strftime('%d.%m.%Y %H:%M')
-            logger.info(f'date_time - {date_time}.')
-            CHECK_RESULT.clear()
-            intro = (
+            CHECK_RESULT = [
                 'Результаты последней проверки.\n'
-                + f'Дата и время - {date_time} (мск).\n'
+                + f'Дата и время: {date_time} (мск).\n'
                 + 'Статусы по сайтам:\n'
-            )
-            logger.info(f'intro - {intro}.')
-            CHECK_RESULT.append(intro)
-            logger.info(f'CHECK_RESULT - {CHECK_RESULT}.')
-            SUCCESSFUL_RESULT = ''
-            UNSUCCESSFUL_RESULT = ''
+            ]
+            SUCCESSFUL_RESULT = '\n    Успешный доступ:\n'
+            UNSUCCESSFUL_RESULT = '\n    ! Проблемы с доступом:\n'
             for endp in ENDPOINTS:
-                logger.info(f'Проверяем статус сайта "{endp}".')
                 check = check_status_resource(endp, telegram_ids)
-                logger.info(f'check - {check}. type(check) - {type(check)}.')
+                
+                logger.debug(f'endpoint: {endp}, check: {check}, type(check): {type(check)}')
                 if check == 200:
                     SUCCESSFUL_RESULT += (f'{check} - {endp}\n')
-                    logger.info(
-                        f'UNSUCCESSFUL_RESULT - {UNSUCCESSFUL_RESULT}.')
                 else:
                     UNSUCCESSFUL_RESULT += f'{check} - {endp}\n'
-                    logger.info(f'SUCCESSFUL_RESULT - {SUCCESSFUL_RESULT}.')
-            logger.info(f'CHECK_RESULT - {CHECK_RESULT}.')
-            if len(UNSUCCESSFUL_RESULT) > 0:
-                CHECK_RESULT.append('    ! Проблемы с доступом:\n')
-                CHECK_RESULT.append(UNSUCCESSFUL_RESULT)
-            CHECK_RESULT.append('    Успешный доступ:\n')
+            CHECK_RESULT.append(UNSUCCESSFUL_RESULT)
             CHECK_RESULT.append(SUCCESSFUL_RESULT)
             logger.info(f'CHECK_RESULT - {CHECK_RESULT}.')
-        except requests.exceptions.ConnectionError as conerror:
-            message = (
-                'ConnectionError при запуске функции main:\n'
-                + f'"{conerror}".\nНе удаётся установить соединение '
-                + f'с сайтом. -\n"{endp}".'
-            )
-            logger.error(message)
-            send_message(message, telegram_ids)
-            send_message_admin(message)
-            logger.exception(message, exc_info=True)
-            raise MyCustomError(message)
         except TypeError as typerror:
             message = (f'TypeError при запуске функции main: {typerror}')
             logger.error(message)
             send_message_admin(message)
-            logger.exception(message, exc_info=True)
-            raise MyCustomError(message)
+            logger.exception(typerror, exc_info=True)
         except Exception as error:
             message = (f'Exception при запуске функции main: {error}.')
             logger.error(message)
             send_message_admin(message)
-            logger.exception(message, exc_info=True)
-            raise MyCustomError(message)
+            logger.exception(error, exc_info=True)
         finally:
             updater.dispatcher.add_handler(
                 CommandHandler('subscribe', subscribe))
