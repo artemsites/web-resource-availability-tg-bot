@@ -2,7 +2,7 @@
 
 Телеграм-бот обеспечивает проверку доступности интернет-ресурсов путём обращения к их URL.
 
-Функциональность бота:
+### Функциональность бота:
 - раз в заданный период опрашивается список ресурсов;
 - анализируется ответ от ресурсов по кодам HTTP;
 - о недоступности ресурсов передаётся сообщение в Telegram по заданным id пользователей;
@@ -13,7 +13,13 @@
     - получить информацию об URL проверяемых интрернет-ресурсов и периодичности проверки;
 - работа логируется.
 
-Для запуска требуется:
+## Использование:
+
+0) Скопировать репозиторий:
+```bash
+git clone https://github.com/Obshee-Delo-IT/resource-availability-tg-bot.git
+cd resource-availability-tg-bot
+```
 
 1) создать файл `.env` и записать токен учётной записи Телеграм-бота. Формат: `TELEGRAM_TOKEN=<token>`. Пример заполнения файла см. `.env.example`.
 
@@ -34,6 +40,28 @@
 
 Пример заполнения файла см. `setup.cfg.example`.
 
+### Далее для запуска на сервере:
+3) Создать virtual env на hosting, например для <a href="https://timeweb.com/ru/docs/virtualnyj-hosting/prilozheniya-i-frejmvorki/python-ustanovka-virtualenv/">timeweb</a>. По сути две команды:
+```bash
+wget https://bootstrap.pypa.io/virtualenv/3.4/virtualenv.pyz
+python3 virtualenv.pyz venv
+```
+
+4) активировать окружение, установить зависимости и запустить через nohup (чтобы не вырубалось от ssh disconnect):
+```bash
+source venv/bin/activate
+pip install -r requirements.txt
+nohup python3 bot.py > bot.out 2>&1 &
+```
+
+При обновлении бота необходимо завершить запущенный бот (например через htop), а затем:
+```bash
+git pull
+source venv/bin/activate
+nohup python3 bot.py > bot.out 2>&1 &
+```
+
+### Для локального запуска
 3) через терминал в папке проекта создать и запустить виртуальное окружение (далее окружение):
 - установить окружение командой `pip install pipenv` или `pip install --user pipenv`. Дождаться установки. В ответ должно быть сообщено место установки окружения. Проверить информацию об окружении командой `pipenv --venv`.
 - активировать окружение командой `pipenv shell`. Должно отобразиться сообщение "Launching subshell in virtual environment...". При повторном выполнении команды должно отобразиться сообщение "Shell for C:/<путь к папке с вирт. окружением> already activated".
