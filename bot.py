@@ -1,5 +1,6 @@
 """Главный файл приложения бота."""
 
+import asyncio
 import datetime
 import logging
 import os
@@ -66,22 +67,24 @@ def get_subscribers_ids():
     return telegram_subscriber_ids
 
 
-def send_message_admin(message):
+async def send_message_admin(message):
     """Отправляет сообщение в Telegram чат админа."""
     bot = get_bot()
-    bot.send_message(chat_id=TELEGRAM_ADMIN_ID, text=message,)
+    logger.debug(f'Отправка сообщения администратору: {message}')
+    await bot.send_message(chat_id=TELEGRAM_ADMIN_ID, text=message,)
     logger.debug(f'Админу отправлено сообщение - "{message}".')
 
 
-def send_message(message, telegram_ids):
+async def send_message(message, telegram_ids):
     """Отправляет сообщение в Telegram-чаты участников процесса."""
     bot = get_bot()
-    for t in telegram_ids:
-        bot.send_message(chat_id=t, text=message,)
+    for id in telegram_ids:
+        logger.debug(f'Отправка сообщения пользователю {id}: {message}')
+        await bot.send_message(chat_id=id, text=message,)
     logger.debug(f'Получателям отправлено сообщение - "{message}".')
 
 
-def check_status_resource(endpoint, telegram_ids):
+async def check_status_resource(endpoint, telegram_ids):
     """Делает запрос к эндпоинту.
 
     В качестве параметра функция получает временную метку и ендпоинт. Делает
@@ -92,7 +95,7 @@ def check_status_resource(endpoint, telegram_ids):
     try:
         response = requests.get(endpoint)
         logger.info(f'response - "{response}". type(response) - {type(response)}.')
-        
+
         result = response.status_code
     except requests.exceptions.ConnectionError as conerror:
         logger.warning(conerror)
@@ -101,9 +104,10 @@ def check_status_resource(endpoint, telegram_ids):
     if result != HTTPStatus.OK:
         message_status_code_not_200 = (f'Сайт: "{endpoint}". Ошибка: {result}.')
         logger.warning(message_status_code_not_200)
-        send_message(message_status_code_not_200, telegram_ids)
+        # await send_message(message_status_code_not_200, telegram_ids)
     else:
         logger.info(f'Сайт: "{endpoint}". Ответ: {result}.')
+        # await send_message(f'Сайт: "{endpoint}". Ответ: {result}.', telegram_ids)
     return result
 
 
@@ -115,13 +119,13 @@ def check_tokens():
     return all([TELEGRAM_TOKEN, TELEGRAM_ADMIN_ID])
 
 
-def last_check(update, context):
+async def last_check(update, context):
     """Возвращает результаты последней проверки."""
     logger.info('***Работает last_check.')
     chat = update.effective_chat
     name = update.message.chat.username
     message = ''.join(CHECK_RESULT)
-    context.bot.send_message(
+    await context.bot.send_message(
         chat_id=chat.id,
         text=message,
         reply_markup=BUTTONS
@@ -130,7 +134,7 @@ def last_check(update, context):
         f'Запрошены результаты последней проверки. Пользователь {name}.')
 
 
-def bot_settings(update, context):
+async def bot_settings(update, context):
     """Возвращает список проверяемых сайтов и периодичность проверки."""
     logger.info('***Работает bot_settings.')
     chat = update.effective_chat
@@ -141,8 +145,8 @@ def bot_settings(update, context):
         endpoints_str += e + '\n'
     message = (
         f'Список проверямых сайтов:\n{endpoints_str}'
-        + f'Периодичность проверки - 1 раз в {RETRY_TIME} ч.')
-    context.bot.send_message(
+        + f'Периодичность проверки - 1 раз в {RETRY_TIME} мин.')
+    await context.bot.send_message(
         chat_id=chat.id,
         text=message,
         reply_markup=BUTTONS
@@ -151,7 +155,7 @@ def bot_settings(update, context):
         f'Запрошены настройки бота. Часть имени пользователя {part_name}.')
 
 
-def subscribe(update, context):
+async def subscribe(update, context):
     """Подписка на рассылку сообщений от бота."""
     logger.info('***Работает subscribe.')
     chat = update.effective_chat
@@ -163,27 +167,27 @@ def subscribe(update, context):
     tg_setting = config['tg_setting']
     if tg_id in telegram_ids:
         telegram_ids.remove(tg_id)
-        logger.debug('telegram_ids после удаления id - '
-                     + f'{telegram_ids}.')
+        logger.debug('telegram_ids после удаления id - ' + f'{telegram_ids}.')
         message = ('Вы отписались от рассылки сообщений от бота.')
         logger.info(f'Пользователь {name} отписалися от рассылки.')
     else:
         telegram_ids.append(tg_id)
-        logger.debug('telegram_ids id после добавления - '
-                     + f'{telegram_ids}.')
+        logger.debug('telegram_ids id после добавления - ' + f'{telegram_ids}.')
         message = ('Вы подписались на рассылку сообщений от бота.')
         logger.info(f'Пользователь {name} подписался на рассылку.')
     tg_setting['subscription_tg_ids'] = ",".join(str(id) for id in telegram_ids)
     with open('setup.cfg', 'w', encoding='utf-8') as configfile:
         config.write(configfile)
-    context.bot.send_message(
+    await context.bot.send_message(
         chat_id=chat.id,
         text=message,
         reply_markup=BUTTONS
     )
 
 
-def main():
+
+async def main():
+    logger.info('main() START!')
     """Основная логика работы бота."""
     global ENDPOINTS, CHECK_RESULT
     endpoints = config.get('tg_setting', 'endpoints')
@@ -191,60 +195,59 @@ def main():
     for endpoint in endpoints:
         if isinstance(endpoint, str) and len(endpoint) != 0:
             ENDPOINTS.append(endpoint)
-    logger.info(f'Список Интернет-сайтов - {[endp for endp in ENDPOINTS]}.')
+    logger.info(f'Список Интернет-сайтов - {[endpoint for endpoint in ENDPOINTS]}.')
+
     telegram_ids = get_subscribers_ids()
+    logger.info(f'Подписчики: {telegram_ids}')
+
     if not check_tokens():
         message = (
             f'Проверка токенов завершилась с ошибкой - {check_tokens()}.')
         logger.critical(message, exc_info=True)
         sys.exit(message)
     logger.info('Проверка токенов завершилась успешно.')
+
     while True:
         try:
             logger.info('Старт очередной проверки...')
-            updater = Updater(token=TELEGRAM_TOKEN)
+
             date_time = DT_MOSCOW.strftime('%d.%m.%Y %H:%M')
             CHECK_RESULT = [
                 'Результаты последней проверки.\n'
                 + f'Дата и время: {date_time} (мск).\n'
                 + 'Статусы по сайтам:\n'
             ]
-            SUCCESSFUL_RESULT = '\n    Успешный доступ:\n'
-            UNSUCCESSFUL_RESULT = '\n    ! Проблемы с доступом:\n'
-            for endp in ENDPOINTS:
-                check = check_status_resource(endp, telegram_ids)
-                
-                logger.debug(f'endpoint: {endp}, check: {check}, type(check): {type(check)}')
+            SUCCESSFUL_RESULT = '\nv Успешный доступ:\n'
+            UNSUCCESSFUL_RESULT = '\nx Проблемы с доступом:\n'
+            for endpoint in ENDPOINTS:
+                check = await check_status_resource(endpoint, telegram_ids)
+
+                logger.debug(f'endpoint: {endpoint}, check: {check}, type(check): {type(check)}')
                 if check == 200:
-                    SUCCESSFUL_RESULT += (f'{check} - {endp}\n')
+                    SUCCESSFUL_RESULT += (f'{check} - {endpoint}\n')
                 else:
-                    UNSUCCESSFUL_RESULT += f'{check} - {endp}\n'
+                    UNSUCCESSFUL_RESULT += f'{check} - {endpoint}\n'
             CHECK_RESULT.append(UNSUCCESSFUL_RESULT)
             CHECK_RESULT.append(SUCCESSFUL_RESULT)
             logger.info(f'CHECK_RESULT - {CHECK_RESULT}.')
+            final_message = ''.join(CHECK_RESULT)
+            await send_message(f'{final_message}', telegram_ids)
         except TypeError as typerror:
             message = (f'TypeError при запуске функции main: {typerror}')
             logger.error(message)
-            send_message_admin(message)
+            await send_message_admin(message)
             logger.exception(typerror, exc_info=True)
         except Exception as error:
             message = (f'Exception при запуске функции main: {error}.')
             logger.error(message)
-            send_message_admin(message)
+            await send_message_admin(message)
             logger.exception(error, exc_info=True)
         finally:
-            updater.dispatcher.add_handler(
-                CommandHandler('subscribe', subscribe))
-            updater.dispatcher.add_handler(
-                CommandHandler('last_check', last_check))
-            updater.dispatcher.add_handler(
-                CommandHandler('bot_settings', bot_settings))
-            updater.start_polling()
-            time.sleep(RETRY_TIME * 3600)
+            await asyncio.sleep(RETRY_TIME * 60)
+
 
 
 if __name__ == '__main__':
-
     logger = logging.getLogger(__name__)
     logger.setLevel(LOG_LEVEL)
     formatter = logging.Formatter(FORMAT_LOG)
@@ -260,4 +263,16 @@ if __name__ == '__main__':
     logger.addHandler(stream_handler)
     logger.info('***\nСтарт работы бота проверки ресурсов ОД.')
 
-    main()
+    from telegram.ext import ApplicationBuilder
+
+    # Создаем экземпляр приложения
+    application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    application.add_handler(CommandHandler('subscribe', subscribe))
+    application.add_handler(CommandHandler('last_check', last_check))
+    application.add_handler(CommandHandler('bot_settings', bot_settings))
+
+    # Запускаем polling
+    application.run_polling()
+
+    # Запускаем основную логику бота
+    asyncio.run(main())
