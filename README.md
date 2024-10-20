@@ -22,6 +22,7 @@ cd resource-availability-tg-bot
 ```
 
 1) создать файл `.env` и записать токен учётной записи Телеграм-бота. Формат: `TELEGRAM_TOKEN=<token>`. Пример заполнения файла см. `.env.example`.
+Текущий бот https://t.me/BOT_OD_WEBSITES_CHECKER_BOT - токен от него можно спросить info@artemsites.ru или https://t.me/artemsites
 
 2) заполнить файл `setup.cfg` параметрами:
 - `[default]`:
