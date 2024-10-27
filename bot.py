@@ -13,6 +13,8 @@ import configparser
 import locale
 
 
+
+from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from http import HTTPStatus
 from logging.handlers import RotatingFileHandler
@@ -35,7 +37,6 @@ BACKUP_СOUNT = int(config['log_setting']['backup_сount'])
 TELEGRAM_ADMIN_ID = config['tg_setting']['admin_tg_id']
 RETRY_TIME = int(config['default']['retry_time'])
 TZ_MOSCOW = pytz.timezone(config['tg_setting']['tzone'])
-DT_MOSCOW = datetime.datetime.now(TZ_MOSCOW)
 ENDPOINTS = []
 CHECK_RESULT = []
 BUTTONS = ReplyKeyboardMarkup(
@@ -109,6 +110,41 @@ async def check_status_resource(endpoint, telegram_ids):
         logger.info(f'Сайт: "{endpoint}". Ответ: {result}.')
         # await send_message(f'Сайт: "{endpoint}". Ответ: {result}.', telegram_ids)
     return result
+
+
+
+async def get_title_and_h1_from_endpoint(endpoint, telegram_ids):
+    """
+    Делает запрос к эндпоинту и возвращает содержимое тегов <title> и <h1> на странице.
+
+    В качестве параметра функция получает эндпоинт. Делает запрос и, если статус
+    ответа не 200, то посылает сообщение пользователю из списка.
+    """
+    try:
+        response = requests.get(endpoint)
+        logger.info(f'response - "{response}". type(response) - {type(response)}.')
+
+        if response.status_code != HTTPStatus.OK:
+            message_status_code_not_200 = (f'Сайт: "{endpoint}". Ошибка: {response.status_code}.')
+            logger.warning(message_status_code_not_200)
+            return None, None
+
+        soup = BeautifulSoup(response.text, 'html.parser')
+        title = soup.title
+        title_text = title.string if title else 'No <title> tag found'
+        h1 = soup.find('h1')
+        h1_text = h1.text if h1 else 'No <h1> tag found'
+    except requests.exceptions.ConnectionError as conerror:
+        logger.warning(conerror)
+        result = f'Connection error: \n{conerror}\n'
+    except Exception as error:
+        logger.error(error)
+        result = f'Error while parsing HTML: {error}'
+    else:
+        logger.info(f'Сайт: "{endpoint}". Заголовок: {title_text}. h1: {h1_text}.')
+
+    return title_text, h1_text
+
 
 
 def check_tokens():
@@ -210,23 +246,24 @@ async def main():
     while True:
         try:
             logger.info('Старт очередной проверки...')
-
+            DT_MOSCOW = datetime.datetime.now(TZ_MOSCOW)
             date_time = DT_MOSCOW.strftime('%d.%m.%Y %H:%M')
             CHECK_RESULT = [
                 'Результаты последней проверки.\n'
                 + f'Дата и время: {date_time} (мск).\n'
                 + 'Статусы по сайтам:\n'
             ]
-            SUCCESSFUL_RESULT = '\nv Успешный доступ:\n'
-            UNSUCCESSFUL_RESULT = '\nx Проблемы с доступом:\n'
+            SUCCESSFUL_RESULT = '\n V - Успешный доступ:\n'
+            UNSUCCESSFUL_RESULT = '\n X - Проблемы с доступом:\n'
             for endpoint in ENDPOINTS:
                 check = await check_status_resource(endpoint, telegram_ids)
+                title, h1 = await get_title_and_h1_from_endpoint(endpoint, telegram_ids)
 
                 logger.debug(f'endpoint: {endpoint}, check: {check}, type(check): {type(check)}')
                 if check == 200:
-                    SUCCESSFUL_RESULT += (f'{check} - {endpoint}\n')
+                    SUCCESSFUL_RESULT += f'Url: {endpoint}\nStatus: {check}\nTitle: {title}\n\n'
                 else:
-                    UNSUCCESSFUL_RESULT += f'{check} - {endpoint}\n'
+                    UNSUCCESSFUL_RESULT += f'Url: {endpoint}\nStatus: {check}\nTitle: {title}\n\n'
             CHECK_RESULT.append(UNSUCCESSFUL_RESULT)
             CHECK_RESULT.append(SUCCESSFUL_RESULT)
             logger.info(f'CHECK_RESULT - {CHECK_RESULT}.')
@@ -263,16 +300,4 @@ if __name__ == '__main__':
     logger.addHandler(stream_handler)
     logger.info('***\nСтарт работы бота проверки ресурсов ОД.')
 
-    from telegram.ext import ApplicationBuilder
-
-    # Создаем экземпляр приложения
-    application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-    application.add_handler(CommandHandler('subscribe', subscribe))
-    application.add_handler(CommandHandler('last_check', last_check))
-    application.add_handler(CommandHandler('bot_settings', bot_settings))
-
-    # Запускаем polling
-    application.run_polling()
-
-    # Запускаем основную логику бота
     asyncio.run(main())
