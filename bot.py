@@ -113,9 +113,9 @@ async def check_status_resource(endpoint, telegram_ids):
 
 
 
-async def get_title_and_h1_from_endpoint(endpoint, telegram_ids):
+async def get_title_from_endpoint(endpoint, telegram_ids):
     """
-    Делает запрос к эндпоинту и возвращает содержимое тегов <title> и <h1> на странице.
+    Делает запрос к эндпоинту и возвращает содержимое тегов <title> на странице.
 
     В качестве параметра функция получает эндпоинт. Делает запрос и, если статус
     ответа не 200, то посылает сообщение пользователю из списка.
@@ -131,19 +131,22 @@ async def get_title_and_h1_from_endpoint(endpoint, telegram_ids):
 
         soup = BeautifulSoup(response.text, 'html.parser')
         title = soup.title
-        title_text = title.string if title else 'No <title> tag found'
-        h1 = soup.find('h1')
-        h1_text = h1.text if h1 else 'No <h1> tag found'
+        title_text = title.string if title.string else 'No <title> tag found'
+        # h1 = soup.find('h1')
+        # h1_text = h1.text if h1.text else 'No <h1> tag found'
     except requests.exceptions.ConnectionError as conerror:
         logger.warning(conerror)
         result = f'Connection error: \n{conerror}\n'
+        title_text = result
     except Exception as error:
         logger.error(error)
         result = f'Error while parsing HTML: {error}'
+        title_text = result
     else:
-        logger.info(f'Сайт: "{endpoint}". Заголовок: {title_text}. h1: {h1_text}.')
-
-    return title_text, h1_text
+        logger.info(f'{endpoint} - {title_text}')
+        title_text = title_text
+        
+    return title_text
 
 
 
@@ -153,6 +156,7 @@ def check_tokens():
     logger.debug(f'TELEGRAM_TOKEN - {TELEGRAM_TOKEN}.')
     logger.debug(f'TELEGRAM_ADMIN_ID - {TELEGRAM_ADMIN_ID}.')
     return all([TELEGRAM_TOKEN, TELEGRAM_ADMIN_ID])
+
 
 
 async def last_check(update, context):
@@ -257,13 +261,13 @@ async def main():
             UNSUCCESSFUL_RESULT = '\n X - Проблемы с доступом:\n'
             for endpoint in ENDPOINTS:
                 check = await check_status_resource(endpoint, telegram_ids)
-                title, h1 = await get_title_and_h1_from_endpoint(endpoint, telegram_ids)
+                title = await get_title_from_endpoint(endpoint, telegram_ids)
 
                 logger.debug(f'endpoint: {endpoint}, check: {check}, type(check): {type(check)}')
                 if check == 200:
-                    SUCCESSFUL_RESULT += f'Url: {endpoint}\nStatus: {check}\nTitle: {title}\n\n'
+                    SUCCESSFUL_RESULT += f'{check} - {endpoint} - {title}\n'
                 else:
-                    UNSUCCESSFUL_RESULT += f'Url: {endpoint}\nStatus: {check}\nTitle: {title}\n\n'
+                    UNSUCCESSFUL_RESULT += f'{check} - {endpoint} - {title}\n'
             CHECK_RESULT.append(UNSUCCESSFUL_RESULT)
             CHECK_RESULT.append(SUCCESSFUL_RESULT)
             logger.info(f'CHECK_RESULT - {CHECK_RESULT}.')
